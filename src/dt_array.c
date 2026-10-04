@@ -44,6 +44,61 @@ dt_array *dt_array_new(size_t length, long long lower_bound)
         cases/normal/array_basics.case, cases/boundary/array_empty.case,
        cases/boundary/array_negative_lower_bound.case */
     
+    // rejects an element block size that exceeds SIZE_MAX
+    // we divide the SIZE_MAX by the size of each element to know how much we can allocate for each
+    // a length that is larger than this allocation is rejected
+    if (length > (SIZE_MAX / sizeof(dt_value))) {
+        return NULL;
+    }
+
+    // check if offset can be represented in long long
+    if (length > 0) {
+        size_t last_offset = length - 1;
+        if (last_offset > LLONG_MAX) {
+            return NULL;    // reject if it cannot fit
+        }
+
+        // if it can, solve for final index
+        long long final_index;
+        dt_status add = dt_int_add(lower_bound, (long long)last_offset, &final_index);
+        if (add != DT_OK) {
+            return NULL;    // reject if final index is not representable
+        }
+    }
+
+    // allocation
+    // allocate enough memory for one dt_array struct
+    dt_array *a = malloc(sizeof(*a));
+        if (a == NULL) {
+            return NULL;    // if no memory was allocated, report allocation failure
+    }
+
+    // allocate enough memory for one elements array
+    dt_value *elements;
+    if (length == 0) {
+        elements = NULL;    // sets a valid array to null (since length is 0)
+    } else {
+        elements = malloc(length * sizeof(dt_value));
+        // if array has no elements, free the memorty allocated for the struct above
+        // then report allocation failure
+        if (elements == NULL) {
+            free(a);
+            return NULL;
+        }
+    }
+    
+    // set value of each memory slot to nil
+    for (size_t i = 0; i < length; i++) {
+        elements[i] = dt_value_nil();
+    }
+
+    // assign corresponding values to each struct fields
+    a->length =         length;
+    a->elements =       elements;
+    a->lower_bound =    lower_bound;
+    
+    // return the complete struct
+    return a;
 }
 
 /*
@@ -53,10 +108,18 @@ dt_array *dt_array_new(size_t length, long long lower_bound)
 void dt_array_free(dt_array *a)
 {
     /* TODO: Release the elements. Then release the descriptor.
-       Preserve the referenced values. The driver environment owns them.
-       an array holding a string  -> the element block goes, the string stays
-       dt_array_free(NULL)        -> returns, having done nothing */
-    (void)a;
+        Preserve the referenced values. The driver environment owns them.
+        an array holding a string  -> the element block goes, the string stays
+        dt_array_free(NULL)        -> returns, having done nothing */
+    
+    // a NULL argument returns, does nothing
+    if (a == NULL) {
+        return;
+    }
+
+    free(a->elements);  // release elements first
+    free(a);            // release the entire descriptor next
+
 }
 
 /*
