@@ -27,15 +27,32 @@ struct dt_tuple {
 dt_tuple *dt_tuple_new(const dt_value *values, size_t count)
 {
     /* TODO: Return NULL when count exceeds DT_TUPLE_MAX_ARITY.
-       Otherwise, copy the values. Accept a zero count.
-       {1, "two"}  -> a tuple of arity 2 that prints as (1, "two")
-       count 0     -> a valid empty tuple that prints as ()
-       count 9     -> NULL, since DT_TUPLE_MAX_ARITY is 8
-       cases/normal/tuple_basics.case, cases/capacity/tuple_max_arity.case,
-       cases/capacity/tuple_over_arity.case */
-    (void)values;
-    (void)count;
-    return NULL;
+        Otherwise, copy the values. Accept a zero count.
+        {1, "two"}  -> a tuple of arity 2 that prints as (1, "two")
+        count 0     -> a valid empty tuple that prints as ()
+        count 9     -> NULL, since DT_TUPLE_MAX_ARITY is 8
+        cases/normal/tuple_basics.case, cases/capacity/tuple_max_arity.case,
+        cases/capacity/tuple_over_arity.case */
+    
+    // returns NULL when count exceeds DT_TUPLE_MAX_ARITY
+    if (count > DT_TUPLE_MAX_ARITY) {
+        return NULL;
+    }
+
+    // allocate enough memory for one dt_tuple struct
+    dt_tuple *t = malloc(sizeof(*t));
+    if (t == NULL) {
+            return NULL;    // if no memory was allocated, report allocation failure
+    }
+
+    // copying values from input to the tuple's own values array
+    for (size_t i = 0; i < count; i++) {
+        t->values[i] = values[i];
+    }
+
+    // assign arity to its corresponding struct field
+    t->arity    =         count;
+    return t;   // return the complete struct
 }
 
 /*
@@ -45,10 +62,16 @@ dt_tuple *dt_tuple_new(const dt_value *values, size_t count)
 void dt_tuple_free(dt_tuple *t)
 {
     /* TODO: Release the tuple. Preserve its values.
-       The environment owns those values. dt_array_free follows the same rule.
-       a tuple holding a string  -> the tuple goes, the string stays
+        The environment owns those values. dt_array_free follows the same rule.
+        a tuple holding a string  -> the tuple goes, the string stays
        dt_tuple_free(NULL)       -> returns, having done nothing */
-    (void)t;
+    
+    // a NULL argument returns, does nothing
+    if (t == NULL) {
+        return;
+    }
+
+    free(t);    // release the entire descriptor
 }
 
 /*
@@ -57,12 +80,11 @@ void dt_tuple_free(dt_tuple *t)
 size_t dt_tuple_arity(const dt_tuple *t)
 {
     /* TODO: Return the count that the constructor stored.
-       The count does not change after construction.
-       after `tup new pair 1 "two"`:  dt_tuple_arity(pair) -> 2
-       after `tup new empty`:         dt_tuple_arity(empty) -> 0
+        The count does not change after construction.
+        after `tup new pair 1 "two"`:  dt_tuple_arity(pair) -> 2
+        after `tup new empty`:         dt_tuple_arity(empty) -> 0
        cases/normal/tuple_basics.case */
-    (void)t;
-    return 0;
+    return t->arity;
 }
 
 /*
@@ -72,12 +94,13 @@ size_t dt_tuple_arity(const dt_tuple *t)
 dt_status dt_tuple_at(const dt_tuple *t, size_t index, dt_value *out)
 {
     /* TODO: DT_ERR_RANGE at or past the arity. Positions start at 0.
-       for the tuple (1, "two"):
+        for the tuple (1, "two"):
          dt_tuple_at(t, 0, &out)  -> DT_OK, *out is the integer 1
          dt_tuple_at(t, 2, &out)  -> DT_ERR_RANGE, *out untouched
        cases/normal/tuple_basics.case, cases/boundary/tuple_index_past_arity.case */
-    (void)t;
-    (void)index;
-    (void)out;
-    return DT_ERR_RANGE;
+    if (index >= dt_tuple_arity(t)) {
+        return DT_ERR_RANGE;
+    }
+    *out = t->values[index];
+    return DT_OK;
 }
