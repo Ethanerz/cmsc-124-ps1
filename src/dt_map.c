@@ -118,8 +118,9 @@ size_t dt_map_len(const dt_map *m)
        after put beta again:          dt_map_len(m) -> 3, still
        after del alpha:               dt_map_len(m) -> 2
        cases/normal/map_basics.case */
-    (void)m;
-    return 0;
+
+    // Checks if the map is NULL, returns 0 if it is, returns its count otherwise
+    return m == NULL ? 0 : m->count;
 }
 
 /*
@@ -138,10 +139,43 @@ dt_status dt_map_put(dt_map *m, const char *key, dt_value v)
        put "beta" -> 22 on that map       -> DT_OK, same position, new value
        an allocation failure              -> DT_ERR_CAPACITY, map unchanged
        cases/normal/map_basics.case */
-    (void)m;
-    (void)key;
-    (void)v;
-    return DT_ERR_CAPACITY;
+    size_t idx = hash_key(key) % DT_MAP_BUCKET_COUNT;
+
+    for (dt_map_entry *e = m->buckets[idx]; e != NULL; e = e->next_in_bucket) {
+        if (strcmp(e->key, key) == 0) {
+            e->value = v;
+            return DT_OK;
+        }
+    }
+
+    dt_map_entry *entry = malloc(sizeof *entry);
+    if (entry == NULL) {
+        return DT_ERR_CAPACITY;
+    }
+
+    size_t len = strlen(key);
+    entry->key = malloc(len + 1);
+    if (entry->key == NULL) {
+        free(entry);
+        return DT_ERR_CAPACITY;
+    }
+    memcpy(entry->key, key, len + 1);
+    entry->value = v;
+
+    entry->next_in_bucket = m->buckets[idx];
+    m->buckets[idx] = entry;
+
+    entry->prev_in_order = m->order_tail;
+    entry->next_in_order = NULL;
+    if (m->order_tail != NULL) {
+        m->order_tail->next_in_order = entry;
+    } else {
+        m->order_head = entry;
+    }
+    m->order_tail = entry;
+
+    m->count++;
+    return DT_OK;
 }
 
 /*
@@ -187,9 +221,39 @@ dt_status dt_map_remove(dt_map *m, const char *key)
          dt_map_remove(m, "ghost")  -> DT_ERR_KEY, nothing changes
        reinserting "alpha" appends it after "gamma"
        cases/normal/map_basics.case, cases/boundary/map_remove_missing_key.case */
-    (void)m;
-    (void)key;
-    return DT_ERR_KEY;
+    size_t idx = hash_key(key) % DT_MAP_BUCKET_COUNT;
+
+    dt_map_entry *prev_bucket = NULL;
+    dt_map_entry *entry = m->buckets[idx];
+    while (entry != NULL && strcmp(entry->key, key) != 0) {
+        prev_bucket = entry;
+        entry = entry->next_in_bucket;
+    }
+    if (entry == NULL) {
+        return DT_ERR_KEY;
+    }
+
+    if (prev_bucket == NULL) {
+        m->buckets[idx] = entry->next_in_bucket;
+    } else {
+        prev_bucket->next_in_bucket = entry->next_in_bucket;
+    }
+
+    if (entry->prev_in_order != NULL) {
+        entry->prev_in_order->next_in_order = entry->next_in_order;
+    } else {
+        m->order_head = entry->next_in_order;
+    }
+    if (entry->next_in_order != NULL) {
+        entry->next_in_order->prev_in_order = entry->prev_in_order;
+    } else {
+        m->order_tail = entry->prev_in_order;
+    }
+
+    m->count--;
+    free(entry->key);
+    free(entry);
+    return DT_OK;
 }
 
 /*
@@ -205,8 +269,15 @@ dt_status dt_map_key_at(const dt_map *m, size_t index, const char **out)
          dt_map_key_at(m, 0, &out)  -> DT_OK, *out = "alpha"
          dt_map_key_at(m, 3, &out)  -> DT_ERR_RANGE, *out untouched
        cases/normal/map_basics.case */
-    (void)m;
-    (void)index;
-    (void)out;
-    return DT_ERR_RANGE;
+    if (m == NULL || index >= m->count) {
+        return DT_ERR_RANGE;
+    }
+
+    dt_map_entry *cursor = m->order_head;
+    for (size_t i = 0; i < index; i++) {
+        cursor = cursor->next_in_order;
+    }
+
+    *out = cursor->key;
+    return DT_OK;
 }
