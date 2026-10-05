@@ -19,10 +19,34 @@
 
 #include <stdlib.h>
 #include <string.h>
+#define DT_MAP_BUCKET_COUNT 16
+
+typedef struct dt_map_entry {
+    char *key;      // map's own copy of the key string
+    dt_value value;
+    struct dt_map_entry *next_in_bucket;    // next entry in this bucket chain
+    struct dt_map_entry *next_in_order;     // next entry in this insertion order
+    struct dt_map_entry *prev_in_order;     // next entry in this insertion order
+} dt_map_entry;
 
 struct dt_map {
-    int placeholder; /* TODO: Add the buckets and insertion-order data. */
+    dt_map_entry *buckets[DT_MAP_BUCKET_COUNT]; // fixed array that holds the buckets
+    dt_map_entry *order_head;             
+    dt_map_entry *order_tail;
+    size_t count;
 };
+
+static unsigned long long hash_key(const char *key)
+{
+    unsigned long long h = 14695981039346656037ULL;
+    for (const unsigned char *p = (const unsigned char *)key; *p != '\0'; p++)
+    {
+        h ^= (unsigned long long)*p;
+        h *= 1099511628211ULL;
+    }
+
+    return h;
+}
 
 /*
  * dt_map_new builds an empty map. It returns NULL after an allocation failure.
@@ -30,9 +54,28 @@ struct dt_map {
 dt_map *dt_map_new(void)
 {
     /* TODO: Return an allocated empty map. Return NULL after an allocation failure.
-       dt_map_new()  -> a map whose dt_map_len is 0
-       cases/normal/map_basics.case */
-    return NULL;
+        dt_map_new()  -> a map whose dt_map_len is 0
+        cases/normal/map_basics.case */
+    
+    // allocate enough memory for one map struct
+    dt_map *m = malloc(sizeof(*m));
+    // returns NULL if no memory was allocated
+    if (m == NULL) {
+        return NULL;
+    }
+
+    // builds an empty map
+    for (size_t i = 0; i < DT_MAP_BUCKET_COUNT; i++) {
+        m->buckets[i] = NULL;
+    }
+
+    // assign corresponding values to each struct fields
+    m->order_head   = NULL;
+    m->order_tail   = NULL;
+    m->count        = 0;
+
+    return m;   // return allocated empty map
+
 }
 
 /*
@@ -42,11 +85,26 @@ dt_map *dt_map_new(void)
 void dt_map_free(dt_map *m)
 {
     /* TODO: Release each entry, copied key, order array, and map.
-       Preserve the values. The environment owns them.
-       a map holding a string value  -> the nodes and keys go, the string stays
-       dt_map_free(NULL)             -> returns, having done nothing
-       cases/cleanup/map_churn.case */
-    (void)m;
+        Preserve the values. The environment owns them.
+        a map holding a string value  -> the nodes and keys go, the string stays
+        dt_map_free(NULL)             -> returns, having done nothing
+        cases/cleanup/map_churn.case */
+    
+    // a NULL argument returns, does nothing
+    if (m == NULL) {
+        return;
+    }
+
+    dt_map_entry *cursor = m->order_head; // loop starts here
+    // loop releases every entry's key copy and the entry itself
+    while (cursor != NULL) {
+        dt_map_entry *next = cursor->next_in_order;     // save the pointer to the next entry before releasing anything
+        free(cursor->key);      // free the entry's key copy
+        free(cursor);           // free the entry itself
+        cursor = next;
+    }
+
+    free(m);    // release the entire map
 }
 
 /*
@@ -94,14 +152,25 @@ dt_status dt_map_put(dt_map *m, const char *key, dt_value v)
 dt_status dt_map_get(const dt_map *m, const char *key, dt_value *out)
 {
     /* TODO: Return DT_ERR_KEY when the key is absent.
-       Preserve *out after this error. A nil value can be present.
-       after put "beta" -> 22:
+        Preserve *out after this error. A nil value can be present.
+        after put "beta" -> 22:
          dt_map_get(m, "beta", &out)   -> DT_OK, *out is the integer 22
          dt_map_get(m, "ghost", &out)  -> DT_ERR_KEY, *out untouched
-       cases/normal/map_basics.case, cases/boundary/map_missing_key.case */
-    (void)m;
-    (void)key;
-    (void)out;
+        cases/normal/map_basics.case, cases/boundary/map_missing_key.case */
+
+    // solve for the bucket index
+    size_t bucket_index     = hash_key(key) % DT_MAP_BUCKET_COUNT;
+    // access value @ calculated index and make it a dt_map_entry
+    dt_map_entry *cursor    = m->buckets[bucket_index];
+
+    while (cursor != NULL) {
+        if (strcmp(cursor->key, key) == 0) {
+            *out = cursor->value;
+            return DT_OK;
+        }
+        cursor = cursor->next_in_bucket;
+    }
+
     return DT_ERR_KEY;
 }
 
