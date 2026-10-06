@@ -12,9 +12,10 @@ In Python, overflow checks are not necessary since integers don’t have a fixed
 
 Python dicts are much more efficient versions of our dt_map. The language already handles the hashing, insertion order, and collision handling for free via a dual-array architecture and open addressing. This makes it faster than our map since we implemented a bucket (linked list) instead of a flat, continuous array. Moreover, our map is constrained to have only 16 slots, while Python’s dictionaries allocate more memory to avoid performance degradation, which is what our map pays for since the map we wrote is cheaper per entry but would be slower as more entries are added. However, the cost in memory that Python traded off for fast lookups is noticeable when you delete a key, as Python cannot simply clear the slot in the index where the now-deleted key was once stored since it would break the probing chain for other keys that collided with the now-deleted one, so they just mark it with a dummy value (called a “tombstone”), creating a dead space that is unusable.
 
-### Third category
+### Python lists vs dt_array
 
-<!-- answer here -->
+In Python, you never have to declare a size up front or manage a lower bound, unlike the fixed-size dt_array we implemented. Python's list grows and shrinks dynamically, and the language handles all the resizing for you. In exchange for this convenience, Python pays for it in memory, since each element in a Python list isn't actually stored inline the way our dt_value elements are. Instead, the list only stores pointers, and each element is a separate, heap-allocated object elsewhere in memory, carrying its own type pointer and reference count, even for something as small as an integer which for lists containing 100s of elements can very quickly occupy a big chunk of memory. For Python, this also costs them speed, since iterating a list means chasing a pointer to a different part of memory for every single element, rather than reading straight through one contiguous block the way our array allows.
+
 
 ---
 
@@ -87,4 +88,9 @@ However, in this problem set's context, not keeping track of the insertion order
 
 > Compare access after release with an allocation that remains unreleased at the driver's final check. What damage can each cause in a long-running server? How does that answer change for a command-line tool that exits in a second?
 
-<!-- answer here -->
+  - **Access after release (use-after-free) 
+		- *In a long-running server: Extremely dangerous since the freed memory doesn't disappear; it becomes available for the next allocation, which, in a server handling many concurrent or sequential requests, is very likely to be a completely unrelated object. Reading through the dangling pointer can return another user's data; writing through it can corrupt that unrelated object's state.
+		- *For a short CLI tool: Far less dangerous but not harmless, since a UAF read can still produce wrong output or crash the single invocation,  but the range is one process, one run, with no other users or requests sharing that memory space to corrupt.
+  - **An allocation that remains unreleased at exit (a leak)
+		- *In a long-running server: The process doesn't crash immediately; it just accumulates unreachable memory for every request sent to the server. If left running for a long enough time, it will eventually exhaust available memory, which can cause degradation in the performance or even crashes during traffic spikes.
+		- *For a short CLI tool: Close to inconsequential since the operating system reclaims the entire process's memory the instant it exits so anything leaked never outlives the program itself.
